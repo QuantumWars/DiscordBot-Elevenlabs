@@ -194,6 +194,38 @@ async def add_voice(ctx, name: str, voice_id: str):
     else:
         await ctx.send(f"❌ Failed to save voice.")
 
+@bot.command(name='renameVoice')
+async def rename_voice(ctx, voice_identifier: str, newName: str):
+    """Rename an existing voice in the library
+    Usage: !renameVoice 4 NewVoiceName or !renameVoice James NewVoiceName"""
+    global VOICE_IDS
+
+    # Find voice by number or name
+    voice_num = None
+
+    # Check if it's a sequence number
+    if voice_identifier in VOICE_IDS:
+        voice_num = voice_identifier
+    else:
+        # Check if it's a voice name (case-insensitive)
+        for key, voice in VOICE_IDS.items():
+            if voice['name'].lower() == voice_identifier.lower():
+                voice_num = key
+                break
+
+    if not voice_num:
+        await ctx.send(f"❌ Voice `{voice_identifier}` not found.")
+        return
+
+    old_name = VOICE_IDS[voice_num]['name']
+    VOICE_IDS[voice_num]['name'] = newName
+
+    if save_voices(VOICE_IDS):
+        await ctx.send(f"✅ Renamed voice #{voice_num} from **{old_name}** to **{newName}**")
+    else:
+        await ctx.send(f"❌ Failed to save voice.")
+
+
 @bot.command(name='searchvoice')
 async def search_voice(ctx, limit: int = 50):
     """Search recent messages for voice IDs
@@ -238,24 +270,38 @@ async def list_voices(ctx):
     await ctx.send(voice_list)
 
 @bot.command(name='removevoice')
-async def remove_voice(ctx, number: str):
+async def remove_voice(ctx, voice_identifier: str):
     """Remove a custom voice
-    Usage: !removevoice 4"""
+    Usage: !removevoice 4 or !removevoice James"""
     global VOICE_IDS
 
-    if number in DEFAULT_VOICE_IDS:
-        await ctx.send(f"❌ Cannot remove default voice #{number}")
+    # Find voice by number or name
+    voice_num = None
+
+    # Check if it's a sequence number
+    if voice_identifier in VOICE_IDS:
+        voice_num = voice_identifier
+    else:
+        # Check if it's a voice name (case-insensitive)
+        for key, voice in VOICE_IDS.items():
+            if voice['name'].lower() == voice_identifier.lower():
+                voice_num = key
+                break
+
+    if not voice_num:
+        await ctx.send(f"❌ Voice `{voice_identifier}` not found.")
         return
 
-    if number in VOICE_IDS:
-        voice_name = VOICE_IDS[number]['name']
-        del VOICE_IDS[number]
-        if save_voices(VOICE_IDS):
-            await ctx.send(f"✅ Removed voice **{voice_name}** (#{number})")
-        else:
-            await ctx.send(f"❌ Failed to save changes.")
+    if voice_num in DEFAULT_VOICE_IDS:
+        await ctx.send(f"❌ Cannot remove default voice #{voice_num}")
+        return
+
+    voice_name = VOICE_IDS[voice_num]['name']
+    del VOICE_IDS[voice_num]
+    if save_voices(VOICE_IDS):
+        await ctx.send(f"✅ Removed voice **{voice_name}** (#{voice_num})")
     else:
-        await ctx.send(f"❌ Voice #{number} not found.")
+        await ctx.send(f"❌ Failed to save changes.")
 
 @bot.command(name='stop')
 async def stop_generation(ctx):
@@ -332,7 +378,7 @@ async def extract_url(ctx, url: str):
         voice_list = "\n".join([f"{k}. {v['name']}" for k, v in VOICE_IDS.items()])
 
         for script_num in selected_scripts:
-            await ctx.send(f"🎤 **Script #{script_num}** - Select voice(s):\n```\n{voice_list}\n```\nEnter single voice (e.g., `1`) or multiple voices (e.g., `1,2,3`):")
+            await ctx.send(f"🎤 **Script #{script_num}** - Select voice(s):\n```\n{voice_list}\n```\nEnter voice by number (e.g., `1`), name (e.g., `James`), or multiple (e.g., `1,Melissa,3`):")
 
             voice_msg = await bot.wait_for('message', check=check_msg, timeout=60.0)
 
@@ -341,12 +387,26 @@ async def extract_url(ctx, url: str):
             voices_for_script = []
 
             for voice_selection in voice_selections:
-                # Determine voice ID
+                # Determine voice ID - check by number first, then by name
+                voice_found = False
+
+                # Check if it's a sequence number
                 if voice_selection in VOICE_IDS:
                     voice = VOICE_IDS[voice_selection]
                     voice_id = voice['id']
                     voice_name = voice['name']
+                    voice_found = True
                 else:
+                    # Check if it's a voice name (case-insensitive)
+                    for key, voice in VOICE_IDS.items():
+                        if voice['name'].lower() == voice_selection.lower():
+                            voice_id = voice['id']
+                            voice_name = voice['name']
+                            voice_found = True
+                            break
+
+                # If not found by number or name, treat as custom voice ID
+                if not voice_found:
                     voice_id = voice_selection.strip()
                     voice_name = 'Custom'
 
